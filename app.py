@@ -274,11 +274,11 @@ class GameScreen(Screen):
         with Horizontal(id="main-area"):
             with Vertical(id="character-panel"):
                 with Vertical(id="character-area"):
-                    yield Static(r"CHARACTER \[click here to edit\]", id="char-title")
+                    yield Static(r"CHARACTER \[click here to edit\]", id="character-title")
                     yield TextArea(id="character-content", read_only=True)
                 with Vertical(id="inventory-area"):
-                    yield Static("INVENTORY", id="inv-title")
-                    yield Static(id="inventory-content")
+                    yield Static(r"INVENTORY \[click here to edit\]", id="inventory-title")
+                    yield TextArea(id="inventory-content", read_only=True)
             with Vertical(id="history-panel"):
                 yield Static("HISTORY", id="history-title")
                 yield RichLog(id="history-content", highlight=True, markup=True)
@@ -302,9 +302,9 @@ class GameScreen(Screen):
         if char_body:
             ta.text = char_body
 
-        inv = self.query_one("#inventory-content", Static)
+        inv = self.query_one("#inventory-content", TextArea)
         if inv_body:
-            inv.update(inv_body)
+            inv.text = inv_body
 
         if hist_body:
             log = self.query_one("#history-content", RichLog)
@@ -313,33 +313,41 @@ class GameScreen(Screen):
                 log.write(line.strip())
 
     def on_click(self, event: Click) -> None:
-        if not event.widget or event.widget.id != "char-title":
+        if not event.widget:
             return
-        ta = self.query_one("#character-content", TextArea)
-        title = self.query_one("#char-title", Static)
+        if event.widget.id == "character-title":
+            self._toggle_edit("character")
+        elif event.widget.id == "inventory-title":
+            self._toggle_edit("inventory")
+
+    def _toggle_edit(self, section: str) -> None:
+        content_id = f"{section}-content"
+        title_id = f"{section}-title"
+        ta = self.query_one(f"#{content_id}", TextArea)
+        title = self.query_one(f"#{title_id}", Static)
+        label = section.upper()
+
         if ta.read_only:
-            self.old_char_text = ta.text
+            setattr(self, f"_old_{section}_text", ta.text)
             ta.read_only = False
             ta.focus()
-            title.update(r"CHARACTER \[click here to save\]")
+            title.update(f"{label} \\[click here to save\\]")
         else:
+            old = getattr(self, f"_old_{section}_text", ta.text)
             ta.read_only = True
-            title.update(r"CHARACTER \[click here to edit\]")
-            self.save_character_changes()
+            title.update(f"{label} \\[click here to edit\\]")
+            self._save_section(section, old, ta.text)
 
-    def save_character_changes(self) -> None:
+    def _save_section(self, section: str, old_text: str, new_text: str) -> None:
+        if new_text == old_text:
+            return
+
         filepath = GAMES_DIR / self.filename
         if not filepath.exists():
             return
 
-        ta = self.query_one("#character-content", TextArea)
-        new_text = ta.text
-        old_text = self.old_char_text
-        if new_text == old_text:
-            return
-
         content = filepath.read_text()
-        content = replace_section(content, "character", new_text)
+        content = replace_section(content, section, new_text)
 
         old_lines = old_text.split("\n")
         new_lines = new_text.split("\n")
@@ -365,7 +373,7 @@ class GameScreen(Screen):
         log = self.query_one("#history-content", RichLog)
         ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         for c in changes:
-            entry = f"[{ts}] character: {c}"
+            entry = f"[{ts}] {section}: {c}"
             hist_body = (hist_body + "\n" + entry).strip()
             log.write(entry)
         content = replace_section(content, "history", hist_body)
@@ -430,14 +438,14 @@ class GameManager(App):
         padding: 1;
     }
 
-    #char-title {
+    #character-title {
         text-style: bold;
         background: $primary 20%;
         padding: 0 1;
         width: 100%;
     }
 
-    #inv-title {
+    #inventory-title {
         text-style: bold;
         background: $accent 20%;
         padding: 0 1;
