@@ -131,7 +131,7 @@ class SessionScreen(Screen):
                 try:
                     idx = int(val) - 1
                     if 0 <= idx < len(sessions):
-                        self.dismiss(sessions[idx])
+                        self.dismiss(("load", sessions[idx]))
                     else:
                         self.show_menu("Invalid selection.")
                 except ValueError:
@@ -159,7 +159,7 @@ class SessionScreen(Screen):
                 self.show_menu("Name cannot be empty.")
                 return
             filename = create_session(val, self.chosen_default)
-            self.dismiss(filename)
+            self.dismiss(("new", filename))
 
         elif self.mode == "delete_select":
             if val.lower() == "c":
@@ -190,6 +190,68 @@ class SessionScreen(Screen):
             self.show_menu()
 
         inp.focus()
+
+
+# ── fill character screen ──────────────────────────────────────────────
+
+
+class FillCharacterScreen(Screen):
+    def __init__(self, filename: str) -> None:
+        self.filename = filename
+        self.fields: list[tuple[str, str]] = []
+        self.current = 0
+        super().__init__()
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Static(id="fill-output")
+        yield Input(id="fill-input")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        content = (GAMES_DIR / self.filename).read_text()
+        char_body = parse_section(content, "character")
+        for line in char_body.split("\n"):
+            if "=" in line:
+                key, _, val = line.partition("=")
+                if not val.strip():
+                    self.fields.append((key.strip(), ""))
+        self.show_next()
+
+    def show_next(self) -> None:
+        if self.current >= len(self.fields):
+            self.save_all()
+            self.dismiss(self.filename)
+            return
+        key, _ = self.fields[self.current]
+        self.query_one("#fill-output", Static).update(
+            f"Character field ({self.current+1}/{len(self.fields)}):\n{key} = ?"
+        )
+        inp = self.query_one("#fill-input", Input)
+        inp.value = ""
+        inp.placeholder = f"Enter {key}..."
+        inp.focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        val = event.value.strip()
+        key, _ = self.fields[self.current]
+        self.fields[self.current] = (key, val)
+        self.current += 1
+        self.show_next()
+
+    def save_all(self) -> None:
+        filepath = GAMES_DIR / self.filename
+        content = filepath.read_text()
+        char_body = parse_section(content, "character")
+        for key, val in self.fields:
+            char_body = re.sub(
+                rf"^{re.escape(key)}\s*=\s*.*",
+                f"{key} = {val}",
+                char_body,
+                flags=re.MULTILINE,
+            )
+        content = replace_section(content, "character", char_body)
+        filepath.write_text(content)
 
 
 # ── game screen ────────────────────────────────────────────────────────
@@ -309,12 +371,30 @@ class GameManager(App):
         height: 3;
         margin: 0 1;
     }
+
+    #fill-output {
+        height: 1fr;
+        margin: 1 2;
+    }
+
+    #fill-input {
+        dock: bottom;
+        height: 3;
+        margin: 0 1;
+    }
     """
 
     def on_mount(self) -> None:
         self.push_screen(SessionScreen(), callback=self.on_session_chosen)
 
-    def on_session_chosen(self, filename: str) -> None:
+    def on_session_chosen(self, result: tuple[str, str]) -> None:
+        action, filename = result
+        if action == "new":
+            self.push_screen(FillCharacterScreen(filename), callback=self.on_character_filled)
+        else:
+            self.push_screen(GameScreen(filename))
+
+    def on_character_filled(self, filename: str) -> None:
         self.push_screen(GameScreen(filename))
 
 
