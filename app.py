@@ -10,17 +10,6 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
 GAMES_DIR = Path("games")
-DEFAULT_TEMPLATE = """[character]
-Name = 
-Class = 
-Level = 1
-HP = 
-AC = 
-[/character]
-
-[history]
-[/history]
-"""
 
 
 # ── helpers ─────────────────────────────────────────────────────────────
@@ -32,7 +21,15 @@ def get_sessions() -> list[str]:
     return sorted(
         f
         for f in os.listdir(str(GAMES_DIR))
-        if f.endswith(".md") and f != "default.md"
+        if f.endswith(".md") and not f.startswith("default_")
+    )
+
+
+def get_defaults() -> list[str]:
+    if not GAMES_DIR.exists():
+        return []
+    return sorted(
+        f for f in os.listdir(str(GAMES_DIR)) if f.startswith("default_") and f.endswith(".md")
     )
 
 
@@ -50,23 +47,17 @@ def replace_section(content: str, section: str, body: str) -> str:
     )
 
 
-def create_session(name: str, char_class: str) -> str:
+def create_session(name: str, default_file: str) -> str:
     raw = f"{name}{time.time()}".encode("utf-8")
     h = hashlib.md5(raw).hexdigest()[:8]
     filename = f"session_{h}.md"
     filepath = GAMES_DIR / filename
-    content = f"""[character]
-Name = {name}
-Class = {char_class}
-Level = 1
-HP =
-AC =
-[/character]
-
-[history]
-Session started for {name} the {char_class}.
-[/history]
-"""
+    template = (GAMES_DIR / default_file).read_text()
+    content = template.replace("Name = ", f"Name = {name}", 1)
+    content = content.replace(
+        "[/history]",
+        f"Session started for {name}.\n[/history]",
+    )
     filepath.write_text(content)
     return filename
 
@@ -88,7 +79,7 @@ class SessionScreen(Screen):
     def show_menu(self, msg: str = "") -> None:
         self.mode = "menu"
         sessions = get_sessions()
-        lines = ["0. Create a new game", "d. Delete a game", ""]
+        lines = ["0. Create a new game", "d. Delete a game", "q. Exit", ""]
         if not sessions:
             lines.append("No saved games found.")
         else:
@@ -112,12 +103,15 @@ class SessionScreen(Screen):
 
         if self.mode == "menu":
             if val == "0":
-                self.mode = "create_name"
-                self.query_one("#session-output", Static).update(
-                    "Enter character name:"
-                )
+                defaults = get_defaults()
+                lines = ["Choose a template:"]
+                for i, d in enumerate(defaults, 1):
+                    label = d.replace("default_", "").replace(".md", "").upper()
+                    lines.append(f"{i}. {label}")
+                self.mode = "create_pick_default"
+                self.query_one("#session-output", Static).update("\n".join(lines))
                 inp.value = ""
-                inp.placeholder = "Character name..."
+                inp.placeholder = f"1–{len(defaults)}..."
             elif val.lower() == "d":
                 sessions = get_sessions()
                 if not sessions:
@@ -130,6 +124,8 @@ class SessionScreen(Screen):
                 self.query_one("#session-output", Static).update("\n".join(lines))
                 inp.value = ""
                 inp.placeholder = "Number or 'c'..."
+            elif val.lower() == "q":
+                self.app.exit()
             else:
                 sessions = get_sessions()
                 try:
@@ -141,22 +137,28 @@ class SessionScreen(Screen):
                 except ValueError:
                     self.show_menu("Invalid input.")
 
+        elif self.mode == "create_pick_default":
+            defaults = get_defaults()
+            try:
+                idx = int(val) - 1
+                if 0 <= idx < len(defaults):
+                    self.chosen_default = defaults[idx]
+                    self.mode = "create_name"
+                    self.query_one("#session-output", Static).update(
+                        "Enter character name:"
+                    )
+                    inp.value = ""
+                    inp.placeholder = "Character name..."
+                else:
+                    self.show_menu("Invalid selection.")
+            except ValueError:
+                self.show_menu("Invalid input.")
+
         elif self.mode == "create_name":
             if not val:
                 self.show_menu("Name cannot be empty.")
                 return
-            self.new_name = val
-            self.mode = "create_class"
-            self.query_one("#session-output", Static).update(
-                "Choose class:\n1. Warrior\n2. Rogue\n3. Wizard"
-            )
-            inp.value = ""
-            inp.placeholder = "1, 2, or 3..."
-
-        elif self.mode == "create_class":
-            class_map = {"1": "Warrior", "2": "Rogue", "3": "Wizard"}
-            char_class = class_map.get(val, "Warrior")
-            filename = create_session(self.new_name, char_class)
+            filename = create_session(val, self.chosen_default)
             self.dismiss(filename)
 
         elif self.mode == "delete_select":
