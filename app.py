@@ -49,6 +49,15 @@ def replace_section(content: str, section: str, body: str) -> str:
     )
 
 
+def get_all_sections(content: str) -> list[str]:
+    sections = []
+    for m in re.finditer(r"\[(\w+)\].*?\[/\1\]", content, re.DOTALL):
+        name = m.group(1)
+        if name != "history" and name not in sections:
+            sections.append(name)
+    return sections
+
+
 def create_session(name: str, default_file: str) -> str:
     raw = f"{name}{time.time()}".encode("utf-8")
     h = hashlib.md5(raw).hexdigest()[:8]
@@ -269,16 +278,28 @@ class GameScreen(Screen):
         self.filename = filename
         super().__init__()
 
+    def _get_content(self) -> str:
+        filepath = GAMES_DIR / self.filename
+        return filepath.read_text() if filepath.exists() else ""
+
+    def _discover_sections(self) -> list[str]:
+        return get_all_sections(self._get_content())
+
     def compose(self) -> ComposeResult:
         yield Header()
+        sections = self._discover_sections()
         with Horizontal(id="main-area"):
-            with Vertical(id="character-panel"):
-                with Vertical(id="character-area"):
-                    yield Static(r"CHARACTER \[click here to edit\]", id="character-title")
-                    yield TextArea(id="character-content", read_only=True)
-                with Vertical(id="inventory-area"):
-                    yield Static(r"INVENTORY \[click here to edit\]", id="inventory-title")
-                    yield TextArea(id="inventory-content", read_only=True)
+            with Vertical(id="left-panel"):
+                with Vertical(id="accordion"):
+                    for sec in sections:
+                        with Horizontal(classes="accordion-title-row"):
+                            yield Static("▼", id=f"{sec}-arrow", classes="accordion-arrow")
+                            yield Static(
+                                f"{sec.upper()} \\[click here to edit\\]",
+                                id=f"{sec}-title",
+                                classes="accordion-title",
+                            )
+                        yield TextArea(id=f"{sec}-content", classes="accordion-content", read_only=True)
             with Vertical(id="history-panel"):
                 yield Static("HISTORY", id="history-title")
                 yield RichLog(id="history-content", highlight=True, markup=True)
@@ -289,23 +310,18 @@ class GameScreen(Screen):
         self.load_file()
 
     def load_file(self) -> None:
-        filepath = GAMES_DIR / self.filename
-        if not filepath.exists():
+        content = self._get_content()
+        if not content:
             return
-        content = filepath.read_text()
 
-        char_body = parse_section(content, "character")
-        inv_body = parse_section(content, "inventory")
+        sections = self._discover_sections()
+        for sec in sections:
+            body = parse_section(content, sec)
+            ta = self.query_one(f"#{sec}-content", TextArea)
+            if body:
+                ta.text = body
+
         hist_body = parse_section(content, "history")
-
-        ta = self.query_one("#character-content", TextArea)
-        if char_body:
-            ta.text = char_body
-
-        inv = self.query_one("#inventory-content", TextArea)
-        if inv_body:
-            inv.text = inv_body
-
         if hist_body:
             log = self.query_one("#history-content", RichLog)
             log.clear()
@@ -313,12 +329,25 @@ class GameScreen(Screen):
                 log.write(line.strip())
 
     def on_click(self, event: Click) -> None:
-        if not event.widget:
+        if not event.widget or not event.widget.id:
             return
-        if event.widget.id == "character-title":
-            self._toggle_edit("character")
-        elif event.widget.id == "inventory-title":
-            self._toggle_edit("inventory")
+        wid = event.widget.id
+
+        if wid.endswith("-arrow"):
+            self._toggle_collapse(wid[:-6])
+        elif wid.endswith("-title"):
+            self._toggle_edit(wid[:-6])
+
+    def _toggle_collapse(self, section: str) -> None:
+        arrow = self.query_one(f"#{section}-arrow", Static)
+        content = self.query_one(f"#{section}-content", TextArea)
+
+        if content.display:
+            content.display = False
+            arrow.update("▶")
+        else:
+            content.display = True
+            arrow.update("▼")
 
     def _toggle_edit(self, section: str) -> None:
         content_id = f"{section}-content"
@@ -415,21 +444,38 @@ class GameManager(App):
         height: 1fr;
     }
 
-    #character-panel {
+    #left-panel {
         width: 33%;
         border: solid $primary;
         padding: 0;
     }
 
-    #character-area {
+    #accordion {
         height: 1fr;
-        padding: 1;
+        overflow-y: auto;
     }
 
-    #inventory-area {
+    .accordion-title-row {
+        height: auto;
+        min-height: 3;
+        background: $primary 20%;
+    }
+
+    .accordion-arrow {
+        width: 3;
+        text-align: center;
+        text-style: bold;
+        padding: 0 1;
+    }
+
+    .accordion-title {
+        text-style: bold;
+        padding: 0 1;
+    }
+
+    .accordion-content {
         height: 1fr;
-        padding: 1;
-        border-top: solid $primary;
+        margin: 1;
     }
 
     #history-panel {
@@ -438,33 +484,11 @@ class GameManager(App):
         padding: 1;
     }
 
-    #character-title {
-        text-style: bold;
-        background: $primary 20%;
-        padding: 0 1;
-        width: 100%;
-    }
-
-    #inventory-title {
-        text-style: bold;
-        background: $accent 20%;
-        padding: 0 1;
-        width: 100%;
-    }
-
     #history-title {
         text-style: bold;
         background: $secondary 20%;
         padding: 0 1;
         width: 100%;
-    }
-
-    #character-content {
-        height: 1fr;
-    }
-
-    #inventory-content {
-        height: 1fr;
     }
 
     #history-content {

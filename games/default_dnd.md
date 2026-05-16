@@ -11,5 +11,11 @@ Gold =
 Items =
 [/inventory]
 
+[skills]
+Acrobatics =
+Arcana =
+Athletics =
+[/skills]
+
 [history]
 [/history]

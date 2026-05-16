@@ -13,5 +13,12 @@ Credits =
 Equipment =
 [/inventory]
 
+[skills]
+Hull =
+Agility =
+Systems =
+Engineering =
+[/skills]
+
 [history]
 [/history]
