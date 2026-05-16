@@ -56,9 +56,10 @@ def create_session(name: str, default_file: str) -> str:
     filepath = GAMES_DIR / filename
     template = (GAMES_DIR / default_file).read_text()
     content = template.replace("Name = ", f"Name = {name}", 1)
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
     content = content.replace(
         "[/history]",
-        f"Session started for {name}.\n[/history]",
+        f"[{now}] Session started for {name}.\n[/history]",
     )
     filepath.write_text(content)
     return filename
@@ -353,7 +354,7 @@ class GameScreen(Screen):
 
         hist_body = parse_section(content, "history")
         log = self.query_one("#history-content", RichLog)
-        ts = datetime.now().strftime("%H:%M")
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         for c in changes:
             entry = f"[{ts}] character: {c}"
             hist_body = (hist_body + "\n" + entry).strip()
@@ -368,8 +369,10 @@ class GameScreen(Screen):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if not event.value.strip():
             return
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        entry = f"[{ts}] {event.value}"
         log = self.query_one("#history-content", RichLog)
-        log.write(event.value)
+        log.write(entry)
         event.input.clear()
 
         filepath = GAMES_DIR / self.filename
@@ -377,7 +380,7 @@ class GameScreen(Screen):
             return
         content = filepath.read_text()
         hist_body = parse_section(content, "history")
-        new_body = (hist_body + "\n" + event.value).strip()
+        new_body = (hist_body + "\n" + entry).strip()
         content = replace_section(content, "history", new_body)
         filepath.write_text(content)
 
