@@ -273,8 +273,12 @@ class GameScreen(Screen):
         yield Header()
         with Horizontal(id="main-area"):
             with Vertical(id="character-panel"):
-                yield Static(r"CHARACTER \[click here to edit\]", id="char-title")
-                yield TextArea(id="character-content", read_only=True)
+                with Vertical(id="character-area"):
+                    yield Static(r"CHARACTER \[click here to edit\]", id="char-title")
+                    yield TextArea(id="character-content", read_only=True)
+                with Vertical(id="inventory-area"):
+                    yield Static("INVENTORY", id="inv-title")
+                    yield Static(id="inventory-content")
             with Vertical(id="history-panel"):
                 yield Static("HISTORY", id="history-title")
                 yield RichLog(id="history-content", highlight=True, markup=True)
@@ -291,11 +295,16 @@ class GameScreen(Screen):
         content = filepath.read_text()
 
         char_body = parse_section(content, "character")
+        inv_body = parse_section(content, "inventory")
         hist_body = parse_section(content, "history")
 
         ta = self.query_one("#character-content", TextArea)
         if char_body:
             ta.text = char_body
+
+        inv = self.query_one("#inventory-content", Static)
+        if inv_body:
+            inv.update(inv_body)
 
         if hist_body:
             log = self.query_one("#history-content", RichLog)
@@ -401,7 +410,18 @@ class GameManager(App):
     #character-panel {
         width: 33%;
         border: solid $primary;
+        padding: 0;
+    }
+
+    #character-area {
+        height: 1fr;
         padding: 1;
+    }
+
+    #inventory-area {
+        height: 1fr;
+        padding: 1;
+        border-top: solid $primary;
     }
 
     #history-panel {
@@ -417,6 +437,13 @@ class GameManager(App):
         width: 100%;
     }
 
+    #inv-title {
+        text-style: bold;
+        background: $accent 20%;
+        padding: 0 1;
+        width: 100%;
+    }
+
     #history-title {
         text-style: bold;
         background: $secondary 20%;
@@ -425,6 +452,10 @@ class GameManager(App):
     }
 
     #character-content {
+        height: 1fr;
+    }
+
+    #inventory-content {
         height: 1fr;
     }
 

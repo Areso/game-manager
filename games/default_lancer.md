@@ -8,5 +8,10 @@ Structure =
 Stress =
 [/character]
 
+[inventory]
+Credits =
+Equipment =
+[/inventory]
+
 [history]
 [/history]

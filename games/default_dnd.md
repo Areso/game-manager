@@ -6,5 +6,10 @@ HP =
 AC = 
 [/character]
 
+[inventory]
+Gold = 
+Items =
+[/inventory]
+
 [history]
 [/history]
