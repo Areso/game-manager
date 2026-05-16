@@ -245,7 +245,7 @@ class FillCharacterScreen(Screen):
         char_body = parse_section(content, "character")
         for key, val in self.fields:
             char_body = re.sub(
-                rf"^{re.escape(key)}\s*=\s*.*",
+                rf"^{re.escape(key)}\s*=.*$",
                 f"{key} = {val}",
                 char_body,
                 flags=re.MULTILINE,
