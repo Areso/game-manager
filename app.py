@@ -2,12 +2,14 @@ import hashlib
 import os
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.events import Click
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.widgets import Footer, Header, Input, RichLog, Static, TextArea
 
 GAMES_DIR = Path("games")
 
@@ -79,7 +81,7 @@ class SessionScreen(Screen):
     def show_menu(self, msg: str = "") -> None:
         self.mode = "menu"
         sessions = get_sessions()
-        lines = ["0. Create a new game", "d. Delete a game", "q. Exit", ""]
+        lines    = ["0. Create a new game", "d. Delete a game", "q. Exit", ""]
         if not sessions:
             lines.append("No saved games found.")
         else:
@@ -270,10 +272,10 @@ class GameScreen(Screen):
         yield Header()
         with Horizontal(id="main-area"):
             with Vertical(id="character-panel"):
-                yield Static("[character]", id="panel-title")
-                yield Static(id="character-content")
+                yield Static(r"CHARACTER \[click here to edit\]", id="char-title")
+                yield TextArea(id="character-content", read_only=True)
             with Vertical(id="history-panel"):
-                yield Static("[history]", id="panel-title")
+                yield Static("HISTORY", id="history-title")
                 yield RichLog(id="history-content", highlight=True, markup=True)
         yield Input(placeholder="Write a message to history...", id="message-input")
         yield Footer()
@@ -284,21 +286,80 @@ class GameScreen(Screen):
     def load_file(self) -> None:
         filepath = GAMES_DIR / self.filename
         if not filepath.exists():
-            self.query_one("#character-content", Static).update("File not found.")
             return
         content = filepath.read_text()
 
         char_body = parse_section(content, "character")
         hist_body = parse_section(content, "history")
 
+        ta = self.query_one("#character-content", TextArea)
         if char_body:
-            self.query_one("#character-content", Static).update(char_body)
+            ta.text = char_body
 
         if hist_body:
             log = self.query_one("#history-content", RichLog)
             log.clear()
             for line in hist_body.split("\n"):
                 log.write(line.strip())
+
+    def on_click(self, event: Click) -> None:
+        if not event.widget or event.widget.id != "char-title":
+            return
+        ta = self.query_one("#character-content", TextArea)
+        title = self.query_one("#char-title", Static)
+        if ta.read_only:
+            self.old_char_text = ta.text
+            ta.read_only = False
+            ta.focus()
+            title.update(r"CHARACTER \[click here to save\]")
+        else:
+            ta.read_only = True
+            title.update(r"CHARACTER \[click here to edit\]")
+            self.save_character_changes()
+
+    def save_character_changes(self) -> None:
+        filepath = GAMES_DIR / self.filename
+        if not filepath.exists():
+            return
+
+        ta = self.query_one("#character-content", TextArea)
+        new_text = ta.text
+        old_text = self.old_char_text
+        if new_text == old_text:
+            return
+
+        content = filepath.read_text()
+        content = replace_section(content, "character", new_text)
+
+        old_lines = old_text.split("\n")
+        new_lines = new_text.split("\n")
+        changes = []
+
+        for i, old_line in enumerate(old_lines):
+            if i < len(new_lines):
+                if old_line != new_lines[i]:
+                    old_val = old_line.partition("=")[2].strip() if "=" in old_line else old_line
+                    new_val = new_lines[i].partition("=")[2].strip() if "=" in new_lines[i] else new_lines[i]
+                    key = old_line.partition("=")[0].strip() if "=" in old_line else new_lines[i].partition("=")[0].strip()
+                    changes.append(f"{key}: {old_val} → {new_val}")
+            else:
+                key = old_line.partition("=")[0].strip()
+                changes.append(f"removed {key}")
+
+        for i in range(len(old_lines), len(new_lines)):
+            key = new_lines[i].partition("=")[0].strip()
+            val = new_lines[i].partition("=")[2].strip()
+            changes.append(f"added {key} = {val}")
+
+        hist_body = parse_section(content, "history")
+        log = self.query_one("#history-content", RichLog)
+        ts = datetime.now().strftime("%H:%M")
+        for c in changes:
+            entry = f"[{ts}] character: {c}"
+            hist_body = (hist_body + "\n" + entry).strip()
+            log.write(entry)
+        content = replace_section(content, "history", hist_body)
+        filepath.write_text(content)
 
     def action_back_to_menu(self) -> None:
         self.app.pop_screen()
@@ -346,9 +407,22 @@ class GameManager(App):
         padding: 1;
     }
 
-    #panel-title {
+    #char-title {
         text-style: bold;
-        margin-bottom: 1;
+        background: $primary 20%;
+        padding: 0 1;
+        width: 100%;
+    }
+
+    #history-title {
+        text-style: bold;
+        background: $secondary 20%;
+        padding: 0 1;
+        width: 100%;
+    }
+
+    #character-content {
+        height: 1fr;
     }
 
     #history-content {
