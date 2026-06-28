@@ -7,7 +7,7 @@ AC =
 [/character]
 
 [inventory]
-Gold = 
+Gold =
 Items =
 [/inventory]
 
@@ -17,5 +17,5 @@ Arcana =
 Athletics =
 [/skills]
 
-[history]
-[/history]
+[log]
+[/log]

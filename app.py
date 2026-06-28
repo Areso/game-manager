@@ -53,7 +53,7 @@ def get_all_sections(content: str) -> list[str]:
     sections = []
     for m in re.finditer(r"\[(\w+)\].*?\[/\1\]", content, re.DOTALL):
         name = m.group(1)
-        if name != "history" and name not in sections:
+        if name != "log" and name not in sections:
             sections.append(name)
     return sections
 
@@ -67,8 +67,8 @@ def create_session(name: str, default_file: str) -> str:
     content = template.replace("Name = ", f"Name = {name}", 1)
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     content = content.replace(
-        "[/history]",
-        f"[{now}] Session started for {name}.\n[/history]",
+        "[/log]",
+        f"[{now}] Session started for {name}.\n[/log]",
     )
     filepath.write_text(content)
     return filename
@@ -301,9 +301,9 @@ class GameScreen(Screen):
                             )
                         yield TextArea(id=f"{sec}-content", classes="accordion-content", read_only=True)
             with Vertical(id="history-panel"):
-                yield Static("HISTORY", id="history-title")
-                yield RichLog(id="history-content", highlight=True, markup=True)
-        yield Input(placeholder="Write a message to history...", id="message-input")
+                yield Static("LOG", id="log-title")
+                yield RichLog(id="log-content", highlight=True, markup=True)
+        yield Input(placeholder="Write a message to log...", id="message-input")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -321,11 +321,11 @@ class GameScreen(Screen):
             if body:
                 ta.text = body
 
-        hist_body = parse_section(content, "history")
-        if hist_body:
-            log = self.query_one("#history-content", RichLog)
+        log_body = parse_section(content, "log")
+        if log_body:
+            log = self.query_one("#log-content", RichLog)
             log.clear()
-            for line in hist_body.split("\n"):
+            for line in log_body.split("\n"):
                 log.write(line.strip())
 
     def on_click(self, event: Click) -> None:
@@ -398,14 +398,14 @@ class GameScreen(Screen):
             val = new_lines[i].partition("=")[2].strip()
             changes.append(f"added {key} = {val}")
 
-        hist_body = parse_section(content, "history")
-        log = self.query_one("#history-content", RichLog)
+        hist_body = parse_section(content, "log")
+        log = self.query_one("#log-content", RichLog)
         ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         for c in changes:
             entry = f"[{ts}] {section}: {c}"
             hist_body = (hist_body + "\n" + entry).strip()
             log.write(entry)
-        content = replace_section(content, "history", hist_body)
+        content = replace_section(content, "log", hist_body)
         filepath.write_text(content)
 
     def action_back_to_menu(self) -> None:
@@ -417,7 +417,7 @@ class GameScreen(Screen):
             return
         ts = datetime.now().strftime("%Y-%m-%d %H:%M")
         entry = f"[{ts}] {event.value}"
-        log = self.query_one("#history-content", RichLog)
+        log = self.query_one("#log-content", RichLog)
         log.write(entry)
         event.input.clear()
 
@@ -425,9 +425,9 @@ class GameScreen(Screen):
         if not filepath.exists():
             return
         content = filepath.read_text()
-        hist_body = parse_section(content, "history")
+        hist_body = parse_section(content, "log")
         new_body = (hist_body + "\n" + entry).strip()
-        content = replace_section(content, "history", new_body)
+        content = replace_section(content, "log", new_body)
         filepath.write_text(content)
 
 
@@ -478,20 +478,20 @@ class GameManager(App):
         margin: 1;
     }
 
-    #history-panel {
+    #log-panel {
         width: 67%;
         border: solid $secondary;
         padding: 1;
     }
 
-    #history-title {
+    #log-title {
         text-style: bold;
         background: $secondary 20%;
         padding: 0 1;
         width: 100%;
     }
 
-    #history-content {
+    #log-content {
         height: 1fr;
     }
 
